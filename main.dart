@@ -11,6 +11,8 @@ import 'dart:typed_data';
 import 'package:pdf/widgets.dart' as pw;
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:js_util' as js_util;
+import 'dart:ui' as ui; // for registering HtmlElementView on web
 
 void main() {
   runApp(const ShinsedaikanApp());
@@ -419,6 +421,23 @@ class _StudentListScreenState extends State<StudentListScreen> {
       _students = s;
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _markFromInput() async {
+    final raw = _controller.text.trim();
+    if (raw.isEmpty) return;
+    // If there is an exact id match, use it; otherwise if there's at least one suggestion, use first; else use raw
+    final exact = _students.firstWhere((s) => s.id == raw, orElse: () => Student(id: '', name: '', belt: '', photoUrl: '', technique: 0, etiquette: 0, attendance: 0, kiai: 0));
+    if (exact.id.isNotEmpty) {
+      await _markAttendanceForId(exact.id);
+      return;
+    }
+    if (_matches.isNotEmpty) {
+      await _markAttendanceForId(_matches.first.id);
+      return;
+    }
+    // fallback: try raw as id
+    await _markAttendanceForId(raw);
   }
 
   Future<void> _openRegister() async {
@@ -1021,11 +1040,128 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
   List<Student> _students = [];
   final _controller = TextEditingController();
   bool _loading = true;
+  List<Student> _matches = [];
+
+  // Camera related (web)
+  html.VideoElement? _videoElement;
+  html.MediaStream? _mediaStream;
+  bool _cameraOn = false;
+  bool _torchOn = false;
+  bool _barcodeDetectorAvailable = false;
+  String? _cameraViewId;
+  final FocusNode _pasteFocus = FocusNode();
+  final List<String> _pasteHistory = [];
+  bool _requireConfirmOnExactPaste = true;
+  bool _promptLock = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // detect if BarcodeDetector is available in this browser
+    try {
+      final bd = js_util.getProperty(html.window, 'BarcodeDetector');
+      if (bd != null) _barcodeDetectorAvailable = true;
+    } catch (_) {
+      _barcodeDetectorAvailable = false;
+    }
+    _loadPasteHistory();
+    _controller.addListener(_onPasteChanged);
+    _loadPasteConfirmSetting();
+  }
+
+  void _onPasteChanged() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      setState(() => _matches = []);
+      return;
+    }
+    final q = text.toLowerCase();
+    final results = _students.where((s) {
+      return s.id.toLowerCase().contains(q) || s.name.toLowerCase().contains(q);
+    }).toList();
+    setState(() => _matches = results.take(6).toList());
+
+    // If input exactly matches a student ID, prompt to confirm and mark (once)
+    if (!_promptLock) {
+      final exact = _students.firstWhere((s) => s.id == text, orElse: () => Student(id: '', name: '', belt: '', photoUrl: '', technique: 0, etiquette: 0, attendance: 0, kiai: 0));
+      if (exact.id.isNotEmpty) {
+        _promptLock = true;
+        Future.delayed(const Duration(milliseconds: 250), () async {
+          if (_requireConfirmOnExactPaste) {
+            bool dontAsk = false;
+            final confirmed = await showDialog<bool>(context: context, builder: (ctx) {
+              return StatefulBuilder(builder: (ctx2, setStateDialog) {
+                return AlertDialog(
+                  title: const Text('Confirm attendance'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Mark ${exact.name} present?'),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Checkbox(value: dontAsk, onChanged: (v) => setStateDialog(() => dontAsk = v ?? false)),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text("Don't ask again for exact ID paste")),
+                      ])
+                    ],
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                    TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Mark')),
+                  ],
+                );
+              });
+            });
+            if (confirmed == true) {
+              await _markAttendanceForId(exact.id);
+              if (dontAsk) {
+                _requireConfirmOnExactPaste = false;
+                await _savePasteConfirmSetting(false);
+              }
+            }
+          } else {
+            await _markAttendanceForId(exact.id);
+          }
+          await Future.delayed(const Duration(milliseconds: 600));
+          _promptLock = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadPasteHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('paste_history_v1');
+      if (raw == null || raw.isEmpty) return;
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      _pasteHistory.clear();
+      _pasteHistory.addAll(decoded.cast<String>());
+      setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _savePasteHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('paste_history_v1', jsonEncode(_pasteHistory));
+    } catch (_) {}
+  }
+
+  Future<void> _loadPasteConfirmSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _requireConfirmOnExactPaste = prefs.getBool('confirm_exact_paste_v1') ?? true;
+    } catch (_) {}
+  }
+
+  Future<void> _savePasteConfirmSetting(bool v) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('confirm_exact_paste_v1', v);
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -1058,13 +1194,111 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
     // save attendance event
     final ev = AttendanceEvent(method: 'QR', timestamp: DateTime.now().toIso8601String());
     await _repo.saveAttendanceEvent(s.id, ev);
+    await _savePasteHistory();
     await _load();
+    // Save paste/history for convenient re-use
+    if (id.isNotEmpty && !_pasteHistory.contains(id)) {
+      _pasteHistory.insert(0, id);
+      if (_pasteHistory.length > 8) _pasteHistory.removeLast();
+    }
+    // clear input and refocus
+    _controller.clear();
+    _pasteFocus.requestFocus();
+
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${s.name} hadir — Attendance: ${newAttendance.toInt()}')));
+  }
+
+  Future<void> _startCamera() async {
+    if (!kIsWeb) return;
+    try {
+      final constraints = {
+        'video': {
+          'facingMode': {'ideal': 'environment'}
+        }
+      };
+      _mediaStream = await html.window.navigator.mediaDevices!.getUserMedia(constraints);
+      _videoElement = html.VideoElement()
+        ..autoplay = true
+        ..muted = true
+        ..playsInline = true
+        ..style.width = '100%'
+        ..style.height = '100%';
+      _videoElement!.srcObject = _mediaStream;
+
+      // register view factory for Flutter to show the video element
+      _cameraViewId = 'camera-video-${DateTime.now().millisecondsSinceEpoch}';
+      // ignore: undefined_prefixed_name
+      ui.platformViewRegistry.registerViewFactory(_cameraViewId!, (int viewId) => _videoElement!);
+
+      setState(() => _cameraOn = true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengakses kamera: $e')));
+    }
+  }
+
+  Future<void> _stopCamera() async {
+    try {
+      _mediaStream?.getTracks().forEach((t) => t.stop());
+      _mediaStream = null;
+      _videoElement = null;
+      _detectTimer?.cancel();
+      setState(() {
+        _cameraOn = false;
+        _torchOn = false;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleTorch() async {
+    if (_mediaStream == null) return;
+    try {
+      final tracks = _mediaStream!.getVideoTracks();
+      if (tracks.isEmpty) return;
+      final track = tracks[0];
+      // try applyConstraints for torch (may not be supported)
+      try {
+        final jsTrack = js_util.getProperty(track, '_jsTrack') ?? track;
+        _torchOn = !_torchOn;
+        await js_util.promiseToFuture(js_util.callMethod(jsTrack, 'applyConstraints', [js_util.jsify({'advanced': [{'torch': _torchOn}]})]));
+        setState(() {});
+      } catch (_) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Torch not supported on this device')));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _tryDetect() async {
+    if (!kIsWeb || _videoElement == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera not running')));
+      return;
+    }
+
+    if (_barcodeDetectorAvailable) {
+      try {
+        final detector = js_util.callConstructor(js_util.getProperty(html.window, 'BarcodeDetector'), [js_util.jsify({'formats': ['qr_code']})]);
+        final promise = js_util.callMethod(detector, 'detect', [_videoElement]);
+        final results = await js_util.promiseToFuture(promise);
+        if (results is List && results.isNotEmpty) {
+          final raw = js_util.getProperty(results[0], 'rawValue');
+          if (raw != null && raw is String && raw.trim().isNotEmpty) {
+            await _markAttendanceForId(raw.trim());
+            return;
+          }
+        }
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No QR found (BarcodeDetector)')));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Detection failed: $e')));
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Browser does not support automatic QR detection')));
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _pasteFocus.dispose();
+    _stopCamera();
     super.dispose();
   }
 
@@ -1077,13 +1311,140 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Scan atau tempel isi QR (ID murid) di bawah, lalu tekan Mark Attendance.'),
+            const Text('Point camera ke QR atau tempel isi QR (ID murid) di bawah, lalu tekan Mark Attendance.'),
             const SizedBox(height: 8),
             Row(children: [
-              Expanded(child: TextField(controller: _controller, decoration: const InputDecoration(hintText: 'Paste QR payload / ID'))),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.camera_alt),
+                label: Text(_cameraOn ? 'Stop Camera' : 'Start Camera'),
+                onPressed: _cameraOn ? _stopCamera : _startCamera,
+              ),
               const SizedBox(width: 8),
-              ElevatedButton(onPressed: () => _markAttendanceForId(_controller.text.trim()), child: const Text('Mark')),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.flash_on),
+                label: Text(_torchOn ? 'Torch On' : 'Torch'),
+                onPressed: _cameraOn ? _toggleTorch : null,
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.search),
+                label: const Text('Try Detect'),
+                onPressed: _cameraOn ? _tryDetect : null,
+              ),
             ]),
+            const SizedBox(height: 8),
+            // Camera preview (web) if active, with overlay
+            if (_cameraOn && _cameraViewId != null)
+              SizedBox(
+                height: 260,
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: HtmlElementView(viewType: _cameraViewId!)),
+                    // Centered overlay box to help align QR
+                    Center(
+                      child: Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white70, width: 2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Stack(
+                          children: [
+                            // Corner accents
+                            Positioned(
+                              left: 6,
+                              top: 6,
+                              child: Container(width: 18, height: 4, color: Colors.white70),
+                            ),
+                            Positioned(
+                              right: 6,
+                              top: 6,
+                              child: Container(width: 18, height: 4, color: Colors.white70),
+                            ),
+                            Positioned(
+                              left: 6,
+                              bottom: 6,
+                              child: Container(width: 18, height: 4, color: Colors.white70),
+                            ),
+                            Positioned(
+                              right: 6,
+                              bottom: 6,
+                              child: Container(width: 18, height: 4, color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Success overlay when a student is marked
+                    if (_showSuccessOverlay)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black45,
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFBD0F0F), width: 2),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.check_circle, color: Color(0xFF00E676), size: 36),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Marked Present', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                      if (_lastMarkedName != null) Text(_lastMarkedName!, style: TextStyle(color: Colors.white70)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(focusNode: _pasteFocus, controller: _controller, decoration: const InputDecoration(hintText: 'Paste QR payload / ID'))),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _markFromInput, child: const Text('Mark')),
+            ]),
+            const SizedBox(height: 8),
+            if (_pasteHistory.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: _pasteHistory.map((h) => ActionChip(label: Text(h, style: const TextStyle(fontSize: 12)), onPressed: () => _markAttendanceForId(h))).toList(),
+              ),
+            const SizedBox(height: 8),
+            // Suggestions as you type
+            if (_matches.isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxHeight: 160),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _matches.length,
+                  separatorBuilder: (_, __) => const Divider(height: 6),
+                  itemBuilder: (context, i) {
+                    final ms = _matches[i];
+                    return ListTile(
+                      leading: _StudentAvatar(student: ms, radius: 18),
+                      title: Text(ms.name),
+                      subtitle: Text('A: ${ms.attendance.toInt()} • ${ms.belt}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                      trailing: ElevatedButton(onPressed: () => _markAttendanceForId(ms.id), child: const Text('Mark')),
+                      onTap: () => _markAttendanceForId(ms.id),
+                    );
+                  },
+                ),
+              ),
             const SizedBox(height: 16),
             const Text('Atau klik QR murid untuk menandai hadir:'),
             const SizedBox(height: 12),
