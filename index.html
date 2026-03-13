@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shinsedaikan - Dojo Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#BD0F0F',
+                        'bg-dark': '#1a0d0d',
+                        'surface-dark': '#2a1a1a',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-bg-dark text-slate-100 font-sans min-h-screen overflow-x-hidden">
+
+    <!-- Splash Screen -->
+    <div id="splash" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg-dark transition-opacity duration-1000">
+        <div class="relative flex flex-col items-center animate-entrance">
+            <img src="logo.jpg" alt="Shinsedaikan Logo" class="w-48 h-48 object-contain mb-8 animate-pulse-slow">
+            <h1 class="text-5xl font-bold tracking-[0.3em] font-display uppercase mb-4">SHINSEDAIKAN</h1>
+            <div class="flex items-center gap-4 w-full justify-center">
+                <div class="h-[1px] flex-1 bg-primary/30 max-w-[60px]"></div>
+                <h2 class="text-primary text-sm font-bold tracking-[0.5em] uppercase">Dojo Management</h2>
+                <div class="h-[1px] flex-1 bg-primary/30 max-w-[60px]"></div>
+            </div>
+            
+            <div class="mt-20 w-64 space-y-3">
+                <div class="flex justify-between text-[10px] tracking-widest uppercase text-slate-400">
+                    <span>Authenticating</span>
+                    <span id="splash-percent" class="text-primary">0%</span>
+                </div>
+                <div class="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div id="splash-progress" class="h-full bg-primary transition-all duration-300 w-0"></div>
+                </div>
+            </div>
+        </div>
+        <div class="absolute bottom-12 text-[10px] tracking-[0.6em] uppercase text-white/20 italic">
+            The Path of Excellence
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <main id="dashboard" class="hidden opacity-0 transition-opacity duration-700 container mx-auto px-4 py-12 max-w-5xl">
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+            <div>
+                <h1 class="text-3xl font-bold font-display tracking-tight flex items-center gap-3">
+                    <img src="logo.jpg" alt="Logo" class="w-12 h-12 object-contain">
+                    STUDENT ROSTER
+                </h1>
+                <p class="text-slate-400 mt-2 text-sm tracking-wide">MAUT Scoring: Technique (50%), Etiquette (30%), Attendance (20%)</p>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <button id="scan-btn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-md font-bold text-sm tracking-widest transition-all border border-white/10 shadow-lg">
+                    <span class="material-symbols-outlined text-lg">qr_code_scanner</span>
+                    SCAN ATTENDANCE
+                </button>
+                <button id="add-student-btn" class="flex items-center gap-2 bg-primary hover:bg-red-700 text-white px-6 py-3 rounded-md font-bold text-sm tracking-widest transition-all hover:scale-105 active:scale-95 shadow-lg shadow-primary/20">
+                    <span class="material-symbols-outlined text-lg">person_add</span>
+                    REGISTER STUDENT
+                </button>
+            </div>
+        </header>
+
+        <div id="reader-container" class="hidden mb-12 overflow-hidden rounded-lg border border-primary/30 bg-black/40 p-4">
+            <div id="reader" class="w-full"></div>
+            <button id="stop-scan" class="mt-4 w-full text-[10px] uppercase tracking-widest font-bold text-slate-400 hover:text-white transition-colors">Stop Camera</button>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6" id="student-list">
+            <!-- Student Cards will be injected here -->
+        </div>
+    </main>
+
+    <!-- Modal for Adding Student -->
+    <div id="modal" class="fixed inset-0 z-[60] hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-surface-dark border border-white/5 w-full max-w-md p-8 rounded-lg shadow-2xl animate-modal-up">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold font-display tracking-wide uppercase">New Student Record</h3>
+                <button id="close-modal" class="text-slate-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <form id="student-form" class="space-y-6">
+                <div class="flex gap-6 items-start">
+                    <div class="relative group">
+                        <div id="photo-preview" class="w-20 h-20 rounded-full bg-black/30 border border-white/10 flex items-center justify-center overflow-hidden">
+                            <span class="material-symbols-outlined text-slate-500">add_a_photo</span>
+                        </div>
+                        <input type="file" id="student-photo" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <label class="text-[10px] uppercase tracking-widest font-bold text-slate-400">Student Name</label>
+                        <input type="text" id="student-name" required class="w-full bg-black/20 border border-white/10 rounded px-4 py-3 focus:border-primary outline-none transition-colors text-slate-100 placeholder-slate-600" placeholder="e.g. Kenji Kimura">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-[10px] uppercase tracking-widest font-bold text-slate-400">Current Belt</label>
+                        <select id="student-belt" class="w-full bg-black/20 border border-white/10 rounded px-4 py-3 focus:border-primary outline-none transition-colors text-slate-100">
+                            <option value="White">White</option>
+                            <option value="Yellow">Yellow</option>
+                            <option value="Orange">Orange</option>
+                            <option value="Green">Green</option>
+                            <option value="Blue">Blue</option>
+                            <option value="Brown">Brown</option>
+                            <option value="Black">Black (Dan)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] uppercase tracking-widest font-bold text-slate-400">Main Technique</label>
+                        <select id="student-technique" class="w-full bg-black/20 border border-white/10 rounded px-4 py-3 focus:border-primary outline-none transition-colors text-slate-100">
+                            <option value="Tai no Henko">Tai no Henko</option>
+                            <option value="Hiriki no Yosei">Hiriki no Yosei</option>
+                            <option value="Ikkyo">Ikkyo</option>
+                            <option value="Shihonage">Shihonage</option>
+                            <option value="Ukemi">Ukemi</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4">
+                    <!-- Sliders for MAUT Scores -->
+                    <div class="space-y-4 p-4 bg-white/5 rounded-lg border border-white/5">
+                        <div class="flex justify-between items-center px-1">
+                            <label class="text-[10px] uppercase tracking-[0.2em] font-bold text-primary">Waza (Technique) - 50%</label>
+                            <span class="text-xs font-mono text-slate-400" id="val-tech">80</span>
+                        </div>
+                        <input type="range" id="tech-score" min="0" max="100" value="80" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                    </div>
+
+                    <div class="space-y-4 p-4 bg-white/5 rounded-lg border border-white/5">
+                        <div class="flex justify-between items-center px-1">
+                            <label class="text-[10px] uppercase tracking-[0.2em] font-bold text-primary">Reigi (Etiquette) - 30%</label>
+                            <span class="text-xs font-mono text-slate-400" id="val-eti">90</span>
+                        </div>
+                        <input type="range" id="eti-score" min="0" max="100" value="90" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                    </div>
+
+                    <div class="space-y-4 p-4 bg-white/5 rounded-lg border border-white/5">
+                        <div class="flex justify-between items-center px-1">
+                            <label class="text-[10px] uppercase tracking-[0.2em] font-bold text-primary">Kiai (Spirit) - Derived</label>
+                            <span class="text-xs font-mono text-slate-400" id="val-kiai">85</span>
+                        </div>
+                        <input type="range" id="kiai-score" min="0" max="100" value="85" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                    </div>
+                    
+                    <div class="space-y-4 p-4 bg-white/5 rounded-lg border border-white/5">
+                        <div class="flex justify-between items-center px-1">
+                            <label class="text-[10px] uppercase tracking-[0.2em] font-bold text-primary">Attendance - 20%</label>
+                            <span class="text-xs font-mono text-slate-400" id="val-att">10</span>
+                        </div>
+                        <input type="range" id="att-score" min="0" max="100" value="10" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-white/5">
+                    <div class="flex justify-between items-center mb-6">
+                        <span class="text-xs text-slate-400 uppercase tracking-widest">Estimated MAUT Score</span>
+                        <span id="preview-maut" class="text-3xl font-bold text-primary tracking-tighter">85.5</span>
+                    </div>
+                    <button type="submit" class="w-full bg-primary hover:bg-red-700 text-white py-4 rounded font-bold tracking-[0.2em] shadow-lg shadow-primary/20 transition-all">
+                        RECORD DATA
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Background Subtle Textures -->
+    <div class="fixed inset-0 -z-10 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+    <div class="fixed inset-0 -z-20 bg-gradient-radial from-primary/5 via-transparent to-transparent"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
