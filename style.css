@@ -1,30 +1,37 @@
-@keyframes entrance {
-    0% { opacity: 0; transform: scale(0.9) translateY(20px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
+/* Professional & Elegant Theme for Shinsedaikan Dojo */
+
+:root {
+    --primary-red: #BD0F0F;
+    --dark-bg: #0f0f0f;
+    --card-bg: #1a1a1a;
+    --border-color: #2a2a2a;
 }
 
-@keyframes pulse-slow {
-    0%, 100% { opacity: 1; filter: drop-shadow(0 0 10px rgba(189, 15, 15, 0.3)); }
-    50% { opacity: 0.8; filter: drop-shadow(0 0 25px rgba(189, 15, 15, 0.6)); }
+@keyframes modal-in {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-@keyframes modal-up {
-    0% { transform: translateY(30px); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+.animate-modal-in {
+    animation: modal-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.animate-entrance {
-    animation: entrance 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--dark-bg);
+}
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-red);
 }
 
-.animate-pulse-slow {
-    animation: pulse-slow 3s ease-in-out infinite;
-}
-
-.animate-modal-up {
-    animation: modal-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
+/* Range Input Styling */
 input[type="range"] {
     -webkit-appearance: none;
     background: transparent;
@@ -32,119 +39,67 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    height: 16px;
-    width: 16px;
+    height: 18px;
+    width: 18px;
     border-radius: 50%;
-    background: #BD0F0F;
+    background: var(--primary-red);
     cursor: pointer;
-    --primary: #990000;
-    --bg-dark: #120808;
-    --surface: #1C0F0F;
-    margin-top: -6px;
-    box-shadow: 0 0 10px rgba(189, 15, 15, 0.5);
-    border: 2px solid #2a1a1a;
+    margin-top: -7px;
+    box-shadow: 0 0 15px rgba(189, 15, 15, 0.4);
+    border: 2px solid #1a1a1a;
+    transition: transform 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
     width: 100%;
     height: 4px;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.1);
+    background: #333;
     border-radius: 2px;
 }
 
-.bg-gradient-radial {
-    background: radial-gradient(circle at center, var(--tw-gradient-from) 0%, var(--tw-gradient-to) 100%);
-}
+/* Belt Badges */
+.belt-white { background: #ffffff; color: #000; }
+.belt-yellow { background: #facc15; color: #000; }
+.belt-green { background: #22c55e; color: #fff; }
+.belt-blue { background: #3b82f6; color: #fff; }
+.belt-brown { background: #92400e; color: #fff; }
+.belt-black { background: #000000; color: #fff; border: 1px solid #444; }
 
-#student-list .student-card {
-    background: linear-gradient(135deg, #2a1a1a 0%, #201212 100%);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+/* Student Card Refinements */
+.student-card {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#student-list .student-card:hover {
-    border-color: rgba(189, 15, 15, 0.4);
+.student-card:hover {
+    border-color: var(--primary-red);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     transform: translateY(-4px);
-    box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
 }
 
-.maut-badge {
-    position: relative;
-    padding-left: 1rem;
-}
-
-.maut-badge::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 2px;
-    height: 70%;
-    background: #BD0F0F;
-}
-
-.student-avatar {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid rgba(189, 15, 15, 0.2);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-}
-
+/* QR Reader Styling */
 #reader {
-    border-radius: 8px;
-    overflow: hidden;
+    border: none !important;
+}
+#reader__scan_region {
     background: #000 !important;
 }
-
-#reader video {
-    object-fit: cover !important;
+#reader__dashboard_section_csr button {
+    background: var(--primary-red) !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 16px !important;
+    border-radius: 8px !important;
+    text-transform: uppercase !important;
+    font-weight: bold !important;
+    font-size: 12px !important;
 }
 
-#photo-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+/* Utilities */
+.text-shadow-red {
+    text-shadow: 0 0 20px rgba(189, 15, 15, 0.5);
 }
-
-.attendance-ping {
-    animation: ping-red 1s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@keyframes ping-red {
-    75%, 100% {
-        transform: scale(2);
-        opacity: 0;
-    }
-}
-
-.radar-container {
-    width: 150px;
-    height: 150px;
-    opacity: 0.8;
-    transition: opacity 0.3s;
-}
-
-.student-card:hover .radar-container {
-    opacity: 1;
-}
-
-.belt-badge {
-    font-size: 8px;
-    padding: 2px 6px;
-    border-radius: 99px;
-    text-transform: uppercase;
-    font-weight: bold;
-    letter-spacing: 0.1em;
-}
-
-.belt-white { background: #fff; color: #000; }
-.belt-yellow { background: #FFEB3B; color: #000; }
-.belt-orange { background: #FF9800; color: #fff; }
-.belt-green { background: #4CAF50; color: #fff; }
-.belt-blue { background: #2196F3; color: #fff; }
-.belt-brown { background: #795548; color: #fff; }
-.belt-black { background: #000; color: #fff; border: 1px solid #333; }
